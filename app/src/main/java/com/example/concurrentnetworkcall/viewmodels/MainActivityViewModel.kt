@@ -12,6 +12,12 @@ import com.example.concurrentnetworkcall.util.ResultOfNetwork
 import kotlinx.coroutines.*
 import retrofit2.HttpException
 import java.io.IOException
+import com.squareup.moshi.JsonAdapter
+
+import com.squareup.moshi.Moshi
+
+
+
 
 class MainActivityViewModel : ViewModel() {
 
@@ -65,70 +71,53 @@ class MainActivityViewModel : ViewModel() {
                     /*
                        Main content must load first
                     */
+                    try {
+                        _freeBook.postValue(ResultOfNetwork.Loading(true))
+                        _freeBook.postValue(repository.getFreeBook())
+                    } catch (throwable: Throwable) {
+                        _freeBook.postValue(ResultOfNetwork.Loading(false))
+                        when (throwable) {
+                            is IOException -> _freeBook.postValue(
+                                ResultOfNetwork.NetworkFailed(
+                                    "[IO] error ${throwable.message} please retry",
+                                    throwable
+                                )
+                            )
+                            is HttpException -> {
 
-                    if(token == "new_token"){
-                        try {
-                            _freeBook.postValue(repository.getFreeBook())
-                        } catch (throwable: Throwable) {
-                            when (throwable) {
-                                is IOException -> _freeBook.postValue(
-                                    ResultOfNetwork.NetworkFailed(
-                                        "[IO] error ${throwable.message} please retry",
-                                        throwable
-                                    )
-                                )
-                                is HttpException -> {
-                                    _freeBook.postValue(
-                                        ResultOfNetwork.ApiFailed(
-                                            throwable.code(),
-                                            "[HTTP] error ${throwable.message} please retry",
-                                            throwable
-                                        )
-                                    )
-                                    throw CancellationException()
+                                val book = withContext(Dispatchers.IO){
+                                    val moshi = Moshi.Builder().build()
+                                    val jsonAdapter: JsonAdapter<Book> =
+                                        moshi.adapter(Book::class.java)
+                                    jsonAdapter.fromJson(throwable.response()?.errorBody()?.string())
                                 }
-                                else -> _freeBook.postValue(
-                                    ResultOfNetwork.UnknownError(
+
+                                _freeBook.postValue(
+                                    ResultOfNetwork.ApiFailed(
+                                        throwable.code(),
+                                        "[HTTP] error ${book?.result?.books?.get(0)?.title} please retry",
                                         throwable
                                     )
                                 )
+                                throw CancellationException()
                             }
-                        }
-                    }else{
-                        try {
-                            _freeBook.postValue(repository.getError402())
-                        } catch (throwable: Throwable) {
-                            when (throwable) {
-                                is IOException -> _freeBook.postValue(
-                                    ResultOfNetwork.NetworkFailed(
-                                        "[IO] error ${throwable.message} please retry",
-                                        throwable
-                                    )
+                            else -> _freeBook.postValue(
+                                ResultOfNetwork.UnknownError(
+                                    throwable
                                 )
-                                is HttpException -> {
-                                    _freeBook.postValue(
-                                        ResultOfNetwork.ApiFailed(
-                                            throwable.code(),
-                                            "[HTTP] error ${throwable.message} please retry",
-                                            throwable
-                                        )
-                                    )
-                                    throw CancellationException()
-                                }
-                                else -> _freeBook.postValue(
-                                    ResultOfNetwork.UnknownError(
-                                        throwable
-                                    )
-                                )
-                            }
+                            )
                         }
                     }
+
+
 
 
                     /*
                        Second liner content
                     */
+                    val job1 = async { repository.getError500Book() }
                     val job2 = async { repository.getHistoryBook(token) }
+
 
                     val historyBooks = try {
                         job2.await()
@@ -147,10 +136,46 @@ class MainActivityViewModel : ViewModel() {
                         }
                     }
 
-                    _items.postValue(mapOf(1 to historyBooks))
+                    val errorBook = try {
+                        job1.await()
+                    } catch (throwable: Throwable) {
+                        when (throwable) {
+                            is IOException -> ResultOfNetwork.NetworkFailed(
+                                "[IO] error ${throwable.message} please retry",
+                                throwable
+                            )
+                            is HttpException -> ResultOfNetwork.ApiFailed(
+                                throwable.code(),
+                                "[HTTP] error ${throwable.message} please retry",
+                                throwable
+                            )
+                            else -> ResultOfNetwork.UnknownError(throwable)
+                        }
+                    }
+
+                    _items.postValue(mapOf(1 to historyBooks, 2 to errorBook))
                 }
             } catch (ex: Exception) {
                 Log.d("LOG-DATA", "Something went wrong")
+            }
+        }
+    }
+
+    private suspend fun getErrorBook500(repository: BookRepository){
+        try{
+            repository.getError500Book()
+        }catch (throwable: Throwable) {
+            when (throwable) {
+                is IOException -> ResultOfNetwork.NetworkFailed(
+                    "[IO] error ${throwable.message} please retry",
+                    throwable
+                )
+                is HttpException -> ResultOfNetwork.ApiFailed(
+                    throwable.code(),
+                    "[HTTP] error ${throwable.message} please retry",
+                    throwable
+                )
+                else -> ResultOfNetwork.UnknownError(throwable)
             }
         }
     }

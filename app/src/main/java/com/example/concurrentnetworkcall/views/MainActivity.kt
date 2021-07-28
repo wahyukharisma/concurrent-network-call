@@ -43,6 +43,19 @@ class MainActivity : AppCompatActivity() {
                             else -> Log.d("LOG-DATA", "Unknown error")
                         }
                     }
+                    2 -> {
+                        when(item.value){
+                            is ResultOfNetwork.Success -> {
+                                Log.d("LOG-DATA", "Success")
+                            }
+                            is ResultOfNetwork.ApiFailed -> {
+                                val result = (item.value as ResultOfNetwork.ApiFailed)
+                                Log.d("LOG-DATA", "Api failed with status code ${result.code}")
+                            }
+                            is ResultOfNetwork.NetworkFailed -> Log.d("LOG-DATA", "Network failed")
+                            else -> Log.d("LOG-DATA", "Unknown error")
+                        }
+                    }
                 }
             }
         })
@@ -56,8 +69,8 @@ class MainActivity : AppCompatActivity() {
                 is ResultOfNetwork.ApiFailed -> {
                     when (item.code) {
                         402 -> {
-                            viewModel.refreshToken(Dispatchers.IO)
-                            Log.d("LOG-DATA", "Something went wrong code ${item.code}")
+                            //viewModel.refreshToken(Dispatchers.IO)
+                            Log.d("LOG-DATA", "Something went wrong code ${item.message}")
                         }
                         else -> {
                             Log.d("LOG-DATA", "Something went wrong code ${item.code}")
